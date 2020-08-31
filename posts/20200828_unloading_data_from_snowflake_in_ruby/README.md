@@ -10,7 +10,7 @@ tags: ruby, snowflake, sql, odbc, jvm
 ## Background
 
 At the company I work for we use ruby as the main language for data import/export jobs.
-Many years ago we standardaised on [kiba gem](https://github.com/thbar/kiba) and build an internal project around its main concepts.
+Many years ago we standardized on [kiba gem](https://github.com/thbar/kiba) and build an internal project around its main concepts.
 
 About a year ago we migrated to [Snowflake DB](https://www.snowflake.com/) as our main data warehouse.
 
@@ -20,12 +20,12 @@ To connect to Snowflake we use:
 - [ruby-odbc gem](https://github.com/larskanis/ruby-odbc)
 - [sequel gem](https://github.com/jeremyevans/sequel)
 
-To execute some simple quieries it works just fine, but recently I noticed its big shortcoming.
+To execute some simple queries it works just fine, but recently I noticed its big shortcoming.
 
-I had to unalod a few millions of records and to my suprise, I didn't see any results for quite a bit in the destination.
-Afer a while I understood it's because it loads the whole result set into memory and then it yields the result back to the caller.
+I had to unload a few millions of records and to my surprise, I didn't see any results for quite a bit in the destination.
+After a while, I understood it's because it loads the whole result set into memory and then it yields the result back to the caller.
 
-Just a quick example what I mean by that:
+Just a quick example of what I mean by that:
 
 ```ruby
 connection = get_snowflake_con
@@ -35,16 +35,16 @@ connection["select * from table limit 100000"].each do |record|
 end
 ```
 
-For any other modern DB connection you would see results as quick as dataset is returned and you could stream it.
+For any other modern DB connection you would see results as quick as a dataset is returned and you could stream it.
 If the data is loaded first to memory, then it means that:
 
 - we can get OOM errors
 - it's slow as you have "eager" load instead of the stream of data
 
 When I found it out I asked some team members whether they have noticed that and is there fix?
-No one really could tell me and everyone assumed it's because of old ruby-odbc driver.
+No one really could tell me and everyone assumed it's because of the old ruby-odbc driver.
 
-Alright, pretty strange, but I want to fix it as I have a few GBs of data to unlaod to some FTP and I don't want the job to OOM on me.
+Alright, pretty strange, but I want to fix it as I have a few GBs of data to unload to some FTP and I don't want the job to OOM on me.
 I started exploring options.
 
 ## Approaches
@@ -75,17 +75,17 @@ but:
 - it uses `limit`, `offset` kind of pagination so there were many queries to DB and it was slow
 - I somehow got duplicates in the returned data
 
-At this point I was quite fed up with ruby, and though of another way.
+At this point, I was quite fed up with ruby, and though of another way.
 
 
 ### Approach 2 - External JVM process
 
-Kiba gem is flexible, so I though I will ask it to execute a JVM process that would stream the results to STDOUT in JSON and ruby would just parse it.
-That would be quite generic solution and we could re-use it for other jobs as well.
+Kiba gem is flexible, so I thought I will ask it to execute a JVM process that would stream the results to STDOUT in JSON and ruby would just parse it.
+That would be quite a generic solution and we could re-use it for other jobs as well.
 
-Some time ago I learnt that Snowflake can unlaod data to inernal stage, and then you can stream the data with JDBC driver. I assumed that it might be quite performant way to get a big amount of data from Snowflake. Here's a bit more details about the solution https://docs.snowflake.com/en/user-guide/data-unload-snowflake.html
+Some time ago I learnt that Snowflake can unload data to the internal stage, and then you can stream the data with JDBC driver. I assumed that it might be a performant way to get a big amount of data from Snowflake. Here are more details about the solution https://docs.snowflake.com/en/user-guide/data-unload-snowflake.html
 
-I spent few hours and I created a new project, called it `snowflake-to-stdout`. sources here: [sparrovv/snowflake-to-stdout](https://github.com/sparrovv/snowflake-to-stdout)
+I spent a few hours and I created a new project, called it `snowflake-to-stdout`. sources here: [sparrovv/snowflake-to-stdout](https://github.com/sparrovv/snowflake-to-stdout)
 
 Quick usage example:
 
@@ -95,9 +95,9 @@ java -jar snowflake-to-stdout.jar \
   --stage stage-name
 ```
 
-And this would stream [newline delimited JSON](http://ndjson.org/) to SDOUT.
+And this would stream [newline delimited JSON](http://ndjson.org/) to STDOUT.
 
-In ruby I creaed a simple utility module that calls whatever command I want, reads the stdout and yields to the caller, I was mainly inspired by this solution: .....
+In ruby I created a simple utility module that calls whatever command I want, reads the stdout and yields to the caller, I was mainly inspired by this solution: .....
 
 This approach worked fine and was quite performant.
 
@@ -105,9 +105,9 @@ I wasn't happy though that I need to maintain now more code.
 
 ### Approach 2.1 - stream JDBC resultsets
 
-At this point I was wondering whether the complexity of unloading to internal stage and streaming is worth the effort. I also noticed that I need to make sure that files are streamed in order, so though let's check how standard JDBC's results performs.
+At this point, I was wondering whether the complexity of unloading to internal stage and streaming is worth the effort. I also noticed that I need to make sure that files are streamed in order, so thought let's check how standard JDBC's results perform.
 
-I added an option to  `snowflake-to-stdout` to verify the perofrmance
+I added an option to  `snowflake-to-stdout` to verify the performance
 
 ```bash
 java -jar snowflake-unloader.jar \
@@ -115,9 +115,9 @@ java -jar snowflake-unloader.jar \
   --result-set
 ```
 
-I ran a quick comparison. I unloaded 1M of records from the same table, and measured the time.
+I ran a quick comparison. I unloaded 1M of records from the same table and measured the time.
 
-The difference was marginal in favour of the approach 2.0 where it streamed files from the stage.
+The difference was marginal in favour of approach 2.0 where it streamed files from the stage.
 
 ### Approach 3.0 - ruby odbc
 
@@ -146,17 +146,17 @@ I did what I should have done at the first step, I checked the Sequel sources.
 
 It turned out that the odbc-adapter in Sequel was calling `find_all` before yielding any results back to the caller.
 
-I asked on the mailing group whether there's any specific reason for that behaviour, but no one knew, but they were happy to merge a patch if I provide one. I oppened a [two lines PR](https://github.com/jeremyevans/sequel/pull/1711) which was quickly accepted.
+I asked on the mailing group whether there's any specific reason for that behaviour, but no one knew, but they were happy to merge a patch if I provide one. I opened a [two lines PR](https://github.com/jeremyevans/sequel/pull/1711) which was quickly accepted.
 
 ## Comparison
 
-Just for the sake of making it clear how long it takes for a given solution to stream 1M records from Snowflake to my **localhost**, once snowflake already cached the results internally. Please don't take this benchmark seriously becasue it's bound to my broadband connection and it could varried at times.
+Just for the sake of making it clear how long it takes for a given solution to stream 1M records from Snowflake to my **localhost**, once snowflake already cached the results internally. Please don't take this benchmark seriously because it's bound to my broadband connection and it could vary at times.
 
 The query:
 
  `SELECT construct_object(*)::varchar as JSON FROM big_table limit 1000000`
 
-snowflake-to-sdout
+snowflake-to-stdout
 
 ```shell
  time ./target/jars/snowflake-to-stdout --sql "SELECT construct_object(*)::varchar as JSON FROM big_table limit 1000000" > result.json
@@ -201,6 +201,6 @@ As I mentioned before, it's not a benchmark. Just a loose comparison to find out
 
 A path to a simple solution is a long one.
 
-I shouldn't have doubt that something that standard like querying and streaming results from DB doesn't work in ruby, but I did.
+I shouldn't doubt that something that standard like querying and streaming results from DB doesn't work in ruby, but I did.
 
 I've created a new project, wrote many lines of code just to circle back and look at the source of the problem.
