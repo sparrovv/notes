@@ -1,15 +1,13 @@
 ```
-
 title: Streaming bigger amounts of data from snowflake in Ruby
 published: false
 description: How to stream data from Snowflake in Ruby
 tags: ruby, snowflake, sql, odbc, jvm
-
 ```
 
 ## Background
 
-At the company I work for we use ruby as the main language for data import/export jobs.
+At the company I work for we use ruby to write data import/export jobs.
 Many years ago we standardized on [kiba gem](https://github.com/thbar/kiba) and build an internal project around its main concepts.
 
 About a year ago we migrated to [Snowflake DB](https://www.snowflake.com/) as our main data warehouse.
@@ -20,22 +18,22 @@ To connect to Snowflake we use:
 - [ruby-odbc gem](https://github.com/larskanis/ruby-odbc)
 - [sequel gem](https://github.com/jeremyevans/sequel)
 
-To execute some simple queries it works just fine, but recently I noticed its big shortcoming.
+To execute some simple queries it works just fine, but recently I noticed a problem.
 
-I had to unload a few millions of records and to my surprise, I didn't see any results for quite a bit in the destination.
-After a while, I understood it's because it loads the whole result set into memory and then it yields the result back to the caller.
+I had to unload a few millions of records and I didn't see any results in the destination for quite a bit.
+After a while, I realised it's because it loads the whole result set into the memory and then it yields the result back to the caller.
 
 Just a quick example of what I mean by that:
 
 ```ruby
 connection = get_snowflake_con
 connection["select * from table limit 100000"].each do |record|
-  # it doesn't print anything until everything is loaded fro
+  # it doesn't print anything until everything is loaded
   puts record
 end
 ```
 
-For any other modern DB connection you would see results as quick as a dataset is returned and you could stream it.
+For any other modern DB connection, you would see results as quick as a dataset is returned and you could stream it.
 If the data is loaded first to memory, then it means that:
 
 - we can get OOM errors
@@ -80,24 +78,24 @@ At this point, I was quite fed up with ruby, and though of another way.
 
 ### Approach 2 - External JVM process
 
-Kiba gem is flexible, so I thought I will ask it to execute a JVM process that would stream the results to STDOUT in JSON and ruby would just parse it.
-That would be quite a generic solution and we could re-use it for other jobs as well.
+Kiba gem is flexible, so I thought I will execute a JVM process that would stream the results to STDOUT in JSON and ruby would just parse it.
+That would be generic enough solution and we could re-use it for other jobs as well.
 
-Some time ago I learnt that Snowflake can unload data to the internal stage, and then you can stream the data with JDBC driver. I assumed that it might be a performant way to get a big amount of data from Snowflake. Here are more details about the solution https://docs.snowflake.com/en/user-guide/data-unload-snowflake.html
+Some time ago I discovered that Snowflake can unload data to the internal stage, and then you can stream the data with JDBC driver. I assumed that it might be a good way to get a big amount of data from Snowflake. Here are more details about the solution https://docs.snowflake.com/en/user-guide/data-unload-snowflake.html
 
-I spent a few hours and I created a new project, called it `snowflake-to-stdout`. sources here: [sparrovv/snowflake-to-stdout](https://github.com/sparrovv/snowflake-to-stdout)
+I spent a few hours and created a new project [sparrovv/snowflake-to-stdout](https://github.com/sparrovv/snowflake-to-stdout)
 
 Quick usage example:
 
 ```shell
-java -jar snowflake-to-stdout.jar \
+./target/jars/snowflake-to-stdout \
   --sql SELECT object_construct(*) FROM big_table \
   --stage stage-name
 ```
 
 And this would stream [newline delimited JSON](http://ndjson.org/) to STDOUT.
 
-In ruby I created a simple utility module that calls whatever command I want, reads the stdout and yields to the caller, I was mainly inspired by this solution: .....
+In ruby I created a simple utility module that calls whatever command I want, reads the stdout and yields to the caller, I was mainly inspired by this [subprocesses-with-stdout-stderr-streams](https://nickcharlton.net/posts/ruby-subprocesses-with-stdout-stderr-streams.html)
 
 This approach worked fine and was quite performant.
 
@@ -107,12 +105,11 @@ I wasn't happy though that I need to maintain now more code.
 
 At this point, I was wondering whether the complexity of unloading to internal stage and streaming is worth the effort. I also noticed that I need to make sure that files are streamed in order, so thought let's check how standard JDBC's results perform.
 
-I added an option to  `snowflake-to-stdout` to verify the performance
+I added an option to `snowflake-to-stdout` to verify the performance
 
 ```bash
-java -jar snowflake-unloader.jar \
-  --sql SELECT object_construct(*)::varchar FROM big_table \
-  --result-set
+./target/jars/snowflake-to-stdout  \
+  --sql "SELECT object_construct(*)::varchar FROM big_table"
 ```
 
 I ran a quick comparison. I unloaded 1M of records from the same table and measured the time.
@@ -123,7 +120,7 @@ The difference was marginal in favour of approach 2.0 where it streamed files fr
 
 I've almost wrapped up the whole story, but then I asked myself. Why this doesn't work in ruby?
 
-I've gone back to the orignal src code and decided to use ruby-odbc driver directly without Sequel gem. Thankfully in the repo there were some examples how to use it:
+I've gone back to the orignal src-code and decided to use ruby-odbc driver directly without Sequel gem. Thankfully in the repo there were some examples how to use it:
 
 ```ruby
 connection = ::ODBC
@@ -137,16 +134,16 @@ query.execute.each_hash(:key=>:Symbol) do |record|
 end
 ```
 
-This works as expected. And it's not Streams the results, yay! So all that time the problem was in Sequel :thinking:
+This works as expected, and it's streaming the results, yay! So all that time the problem was in Sequel gem :thinking:.
 
 ### Approach 4.0 - Patching Sequel
 
-Ok so it works with ruby-odbc, why doesn't it then work with ODBC + Sequel gem?
+Ok so it works with ruby-odbc, why doesn't it then work with ODBC + Sequel?
 I did what I should have done at the first step, I checked the Sequel sources.
 
-It turned out that the odbc-adapter in Sequel was calling `find_all` before yielding any results back to the caller.
+It turned out that the odbc adapter in Sequel was calling `find_all` before yielding any results back to the caller.
 
-I asked on the mailing group whether there's any specific reason for that behaviour, but no one knew, but they were happy to merge a patch if I provide one. I opened a [two lines PR](https://github.com/jeremyevans/sequel/pull/1711) which was quickly accepted.
+I asked on the mailing list whether there's any particular reason for that behaviour, but no one knew, but they were happy to merge a patch if I provide one. I opened a [two lines PR](https://github.com/jeremyevans/sequel/pull/1711) which was quickly accepted.
 
 ## Comparison
 
